@@ -4,9 +4,11 @@ Capture a website screenshot (PNG / JPEG / WebP) in any GitHub workflow and save
 
 ## Quick start
 
-1. Get a free API key on [RapidAPI](https://rapidapi.com/eduardoalcantarasp/api/screenshot-e-pdf-render).
+1. Subscribe (free plan available) on [RapidAPI](https://rapidapi.com/eduardoalcantarasp/api/screenshot-e-pdf-render) and copy your **RapidAPI key**.
 2. Add it as a repository secret named `RENDERSHOT_API_KEY`.
 3. Use the action:
+
+> Requests go through the RapidAPI gateway, so usage counts against your RapidAPI plan (RapidAPI handles billing and quota).
 
 ```yaml
 - name: Capture screenshot
@@ -48,7 +50,7 @@ jobs:
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `api-key` | yes | — | RenderShot API key (`x-api-key`). Use a secret. |
+| `api-key` | yes | — | Your **RapidAPI key** (`X-RapidAPI-Key`). Use a secret. |
 | `url` | yes | — | Page to capture. |
 | `output` | no | `screenshot.png` | File path to write. |
 | `type` | no | `png` | `png`, `jpeg` or `webp`. |
@@ -59,13 +61,14 @@ jobs:
 | `dark-mode` | no | `false` | Emulate dark color scheme. |
 | `block-ads` | no | `false` | Block ad/tracker requests. |
 | `block-cookie-banners` | no | `true` | Hide cookie/consent banners. |
-| `base-url` | no | `https://api.rendershot.dev` | API base URL. |
+| `rapidapi-host` | no | `screenshot-e-pdf-render.p.rapidapi.com` | RapidAPI gateway host. |
 
 ## Notes
 
-- The API key is masked in logs (`::add-mask::`).
-- Non-2xx responses fail the step with a readable error.
-- Quotas and rate limits follow your RenderShot/RapidAPI plan.
+- Calls go through the RapidAPI gateway (`https://screenshot-e-pdf-render.p.rapidapi.com`), so billing and quota stay on RapidAPI.
+- The API key is masked in logs (`::add-mask::`) and all inputs are passed via environment variables (no shell injection).
+- Inputs are validated; non-2xx responses fail the step with a readable error.
+- Quotas and rate limits follow your RapidAPI plan.
 
 ## Links
 

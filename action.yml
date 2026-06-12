@@ -1,5 +1,5 @@
 name: 'RenderShot Screenshot'
-description: 'Capture a website screenshot (PNG/JPEG/WebP) via the RenderShot API and save it to a file. No local Chromium needed.'
+description: 'Capture a website screenshot (PNG/JPEG/WebP) via the RenderShot API on RapidAPI. No local Chromium needed.'
 author: 'RenderShot'
 branding:
   icon: 'camera'
@@ -7,13 +7,13 @@ branding:
 
 inputs:
   api-key:
-    description: 'RenderShot API key (sent as the x-api-key header). Store it in a repository secret.'
+    description: 'Your RapidAPI key (X-RapidAPI-Key). Store it in a repository secret. Billing/quota is handled by RapidAPI.'
     required: true
   url:
-    description: 'URL of the page to capture.'
+    description: 'URL of the page to capture (http/https).'
     required: true
   output:
-    description: 'Path to write the captured file.'
+    description: 'Relative path to write the captured file.'
     required: false
     default: 'screenshot.png'
   type:
@@ -25,7 +25,7 @@ inputs:
     required: false
     default: 'true'
   device:
-    description: 'Optional device preset: iphone_15, iphone_se, pixel_7, galaxy_s9, ipad, ipad_pro.'
+    description: 'Device preset: iphone_15, iphone_se, pixel_7, galaxy_s9, ipad, ipad_pro.'
     required: false
     default: ''
   wait-for-selector:
@@ -45,54 +45,72 @@ inputs:
     required: false
     default: 'false'
   block-cookie-banners:
-    description: 'Hide common cookie/consent banners (true/false).'
+    description: 'Hide cookie/consent banners (true/false).'
     required: false
     default: 'true'
-  base-url:
-    description: 'RenderShot API base URL.'
+  rapidapi-host:
+    description: 'RapidAPI host for the RenderShot API.'
     required: false
-    default: 'https://api.rendershot.dev'
+    default: 'screenshot-e-pdf-render.p.rapidapi.com'
 
 runs:
   using: 'composite'
   steps:
-    - name: Capture screenshot via RenderShot
+    - name: Capture screenshot via RenderShot (RapidAPI)
       shell: bash
+      # All inputs are passed through the environment — never interpolated into
+      # the script body — so a malicious value cannot inject shell commands.
       env:
-        RS_API_KEY: ${{ inputs.api-key }}
+        RS_KEY: ${{ inputs.api-key }}
+        RS_URL: ${{ inputs.url }}
+        RS_OUTPUT: ${{ inputs.output }}
+        RS_TYPE: ${{ inputs.type }}
+        RS_FULLPAGE: ${{ inputs.full-page }}
+        RS_DEVICE: ${{ inputs.device }}
+        RS_WAITFOR: ${{ inputs.wait-for-selector }}
+        RS_DELAY: ${{ inputs.delay }}
+        RS_DARK: ${{ inputs.dark-mode }}
+        RS_BLOCKADS: ${{ inputs.block-ads }}
+        RS_BLOCKCOOKIES: ${{ inputs.block-cookie-banners }}
+        RS_HOST: ${{ inputs.rapidapi-host }}
       run: |
         set -euo pipefail
-        # Mask the key so it can never leak into logs.
-        echo "::add-mask::$RS_API_KEY"
+        echo "::add-mask::$RS_KEY"
 
-        if [ -z "${{ inputs.url }}" ]; then echo "::error::input 'url' is required"; exit 1; fi
-        if [ -z "$RS_API_KEY" ]; then echo "::error::input 'api-key' is required"; exit 1; fi
+        # --- validate inputs ---
+        [ -n "$RS_KEY" ] || { echo "::error::api-key is required (your RapidAPI key)"; exit 1; }
+        case "$RS_URL" in http://*|https://*) ;; *) echo "::error::url must start with http:// or https://"; exit 1 ;; esac
+        case "$RS_TYPE" in png|jpeg|webp) ;; *) echo "::error::type must be png, jpeg or webp"; exit 1 ;; esac
+        case "$RS_FULLPAGE" in true|false) ;; *) echo "::error::full-page must be true or false"; exit 1 ;; esac
+        case "$RS_DARK" in true|false) ;; *) echo "::error::dark-mode must be true or false"; exit 1 ;; esac
+        case "$RS_BLOCKADS" in true|false) ;; *) echo "::error::block-ads must be true or false"; exit 1 ;; esac
+        case "$RS_BLOCKCOOKIES" in true|false) ;; *) echo "::error::block-cookie-banners must be true or false"; exit 1 ;; esac
+        [ -z "$RS_DELAY" ] || case "$RS_DELAY" in ''|*[!0-9]*) echo "::error::delay must be an integer (ms)"; exit 1 ;; esac
+        case "$RS_OUTPUT" in /*|*..*) echo "::error::output must be a relative path without '..'"; exit 1 ;; esac
 
+        # --- build request (values are data-urlencoded, not evaluated) ---
         args=( --get
-               --data-urlencode "url=${{ inputs.url }}"
-               --data-urlencode "type=${{ inputs.type }}"
-               --data-urlencode "fullPage=${{ inputs.full-page }}"
-               --data-urlencode "darkMode=${{ inputs.dark-mode }}"
-               --data-urlencode "blockAds=${{ inputs.block-ads }}"
-               --data-urlencode "blockCookieBanners=${{ inputs.block-cookie-banners }}" )
-        if [ -n "${{ inputs.device }}" ]; then args+=( --data-urlencode "device=${{ inputs.device }}" ); fi
-        if [ -n "${{ inputs.wait-for-selector }}" ]; then args+=( --data-urlencode "waitForSelector=${{ inputs.wait-for-selector }}" ); fi
-        if [ -n "${{ inputs.delay }}" ]; then args+=( --data-urlencode "delay=${{ inputs.delay }}" ); fi
+               --data-urlencode "url=$RS_URL"
+               --data-urlencode "type=$RS_TYPE"
+               --data-urlencode "fullPage=$RS_FULLPAGE"
+               --data-urlencode "darkMode=$RS_DARK"
+               --data-urlencode "blockAds=$RS_BLOCKADS"
+               --data-urlencode "blockCookieBanners=$RS_BLOCKCOOKIES" )
+        [ -z "$RS_DEVICE" ]  || args+=( --data-urlencode "device=$RS_DEVICE" )
+        [ -z "$RS_WAITFOR" ] || args+=( --data-urlencode "waitForSelector=$RS_WAITFOR" )
+        [ -z "$RS_DELAY" ]   || args+=( --data-urlencode "delay=$RS_DELAY" )
 
-        http_code=$(curl -sS -w '%{http_code}' \
-          "${args[@]}" \
-          -H "x-api-key: $RS_API_KEY" \
-          "${{ inputs.base-url }}/v1/screenshot" \
-          --output "${{ inputs.output }}")
+        # --- call through the RapidAPI gateway (keeps billing/quota) ---
+        http_code=$(curl -sS -w '%{http_code}' "${args[@]}" \
+          -H "X-RapidAPI-Key: $RS_KEY" \
+          -H "X-RapidAPI-Host: $RS_HOST" \
+          "https://$RS_HOST/v1/screenshot" \
+          --output "$RS_OUTPUT")
 
         if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
           echo "::error::RenderShot API returned HTTP $http_code"
-          echo "Response body (truncated):"
-          head -c 500 "${{ inputs.output }}" 2>/dev/null || true
-          echo ""
-          rm -f "${{ inputs.output }}"
+          echo "Response body (truncated):"; head -c 500 "$RS_OUTPUT" 2>/dev/null || true; echo ""
+          rm -f "$RS_OUTPUT"
           exit 1
         fi
-
-        bytes=$(wc -c < "${{ inputs.output }}" | tr -d ' ')
-        echo "Saved ${{ inputs.output }} ($bytes bytes, HTTP $http_code)"
+        echo "Saved $RS_OUTPUT ($(wc -c < "$RS_OUTPUT" | tr -d ' ') bytes, HTTP $http_code)"
