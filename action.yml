@@ -1,0 +1,98 @@
+name: 'RenderShot Screenshot'
+description: 'Capture a website screenshot (PNG/JPEG/WebP) via the RenderShot API and save it to a file. No local Chromium needed.'
+author: 'RenderShot'
+branding:
+  icon: 'camera'
+  color: 'purple'
+
+inputs:
+  api-key:
+    description: 'RenderShot API key (sent as the x-api-key header). Store it in a repository secret.'
+    required: true
+  url:
+    description: 'URL of the page to capture.'
+    required: true
+  output:
+    description: 'Path to write the captured file.'
+    required: false
+    default: 'screenshot.png'
+  type:
+    description: 'Output format: png, jpeg or webp.'
+    required: false
+    default: 'png'
+  full-page:
+    description: 'Capture the full scrollable page (true/false).'
+    required: false
+    default: 'true'
+  device:
+    description: 'Optional device preset: iphone_15, iphone_se, pixel_7, galaxy_s9, ipad, ipad_pro.'
+    required: false
+    default: ''
+  wait-for-selector:
+    description: 'Wait for a CSS selector to appear before capturing.'
+    required: false
+    default: ''
+  delay:
+    description: 'Extra wait in milliseconds before capturing.'
+    required: false
+    default: ''
+  dark-mode:
+    description: 'Emulate dark color scheme (true/false).'
+    required: false
+    default: 'false'
+  block-ads:
+    description: 'Block ad/tracker requests (true/false).'
+    required: false
+    default: 'false'
+  block-cookie-banners:
+    description: 'Hide common cookie/consent banners (true/false).'
+    required: false
+    default: 'true'
+  base-url:
+    description: 'RenderShot API base URL.'
+    required: false
+    default: 'https://api.rendershot.dev'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Capture screenshot via RenderShot
+      shell: bash
+      env:
+        RS_API_KEY: ${{ inputs.api-key }}
+      run: |
+        set -euo pipefail
+        # Mask the key so it can never leak into logs.
+        echo "::add-mask::$RS_API_KEY"
+
+        if [ -z "${{ inputs.url }}" ]; then echo "::error::input 'url' is required"; exit 1; fi
+        if [ -z "$RS_API_KEY" ]; then echo "::error::input 'api-key' is required"; exit 1; fi
+
+        args=( --get
+               --data-urlencode "url=${{ inputs.url }}"
+               --data-urlencode "type=${{ inputs.type }}"
+               --data-urlencode "fullPage=${{ inputs.full-page }}"
+               --data-urlencode "darkMode=${{ inputs.dark-mode }}"
+               --data-urlencode "blockAds=${{ inputs.block-ads }}"
+               --data-urlencode "blockCookieBanners=${{ inputs.block-cookie-banners }}" )
+        if [ -n "${{ inputs.device }}" ]; then args+=( --data-urlencode "device=${{ inputs.device }}" ); fi
+        if [ -n "${{ inputs.wait-for-selector }}" ]; then args+=( --data-urlencode "waitForSelector=${{ inputs.wait-for-selector }}" ); fi
+        if [ -n "${{ inputs.delay }}" ]; then args+=( --data-urlencode "delay=${{ inputs.delay }}" ); fi
+
+        http_code=$(curl -sS -w '%{http_code}' \
+          "${args[@]}" \
+          -H "x-api-key: $RS_API_KEY" \
+          "${{ inputs.base-url }}/v1/screenshot" \
+          --output "${{ inputs.output }}")
+
+        if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+          echo "::error::RenderShot API returned HTTP $http_code"
+          echo "Response body (truncated):"
+          head -c 500 "${{ inputs.output }}" 2>/dev/null || true
+          echo ""
+          rm -f "${{ inputs.output }}"
+          exit 1
+        fi
+
+        bytes=$(wc -c < "${{ inputs.output }}" | tr -d ' ')
+        echo "Saved ${{ inputs.output }} ($bytes bytes, HTTP $http_code)"
